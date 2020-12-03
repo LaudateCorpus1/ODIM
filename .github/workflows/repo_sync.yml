@@ -19,7 +19,6 @@ jobs:
           upstream_repo='https://github.com/ODIM-Project/ODIM.git'
           user_name='ashraf-vazeer'
           email='ashraf.vazeer@hpe.com'
-          git config --global user.name ''$user_name''
           git clone https://github.com/$source_repo.git
           cd ODIM
           git config --global user.name ''$user_name''
