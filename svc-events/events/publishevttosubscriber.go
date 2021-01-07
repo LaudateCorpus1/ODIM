@@ -25,11 +25,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
 	"time"
-	"fmt"
 
 	"github.com/ODIM-Project/ODIM/lib-rest-client/pmbhandle"
 	"github.com/ODIM-Project/ODIM/lib-utilities/common"
@@ -167,13 +167,13 @@ func PublishEventsToDestination(data interface{}) bool {
 			go updateSystemPowerState(uuid, message.Events[0].OriginOfCondition, message.Events[0].MessageID)
 			flag = true
 		}
-	}else if strings.EqualFold("ResourceAdded", message.Events[0].EventType) || strings.EqualFold("ResourceRemoved", message.Events[0].EventType) {
-        if strings.Contains(message.Events[0].OriginOfCondition, "Volumes") {
-            s := strings.Split(message.Events[0].OriginOfCondition, "/")
-            storageURI := fmt.Sprintf("/%s/%s/%s/%s/%s/", s[1], s[2], s[3], s[4], s[5])
-            go rediscoverSystemInventory(uuid, storageURI)
-            flag = true
-        }
+	} else if strings.EqualFold("ResourceAdded", message.Events[0].EventType) || strings.EqualFold("ResourceRemoved", message.Events[0].EventType) {
+		if strings.Contains(message.Events[0].OriginOfCondition, "Volumes") {
+			s := strings.Split(message.Events[0].OriginOfCondition, "/")
+			storageURI := fmt.Sprintf("/%s/%s/%s/%s/%s/", s[1], s[2], s[3], s[4], s[5])
+			go rediscoverSystemInventory(uuid, storageURI)
+			flag = true
+		}
 	}
 	return flag
 }
