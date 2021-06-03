@@ -32,6 +32,7 @@ import (
 	"strings"
 	"time"
 
+	telemetry "github.com/ODIM-Project/ODIM/lib-dmtf/model"
 	"github.com/ODIM-Project/ODIM/lib-rest-client/pmbhandle"
 	"github.com/ODIM-Project/ODIM/lib-utilities/common"
 	"github.com/ODIM-Project/ODIM/lib-utilities/config"
@@ -73,19 +74,23 @@ func PublishEventsToDestination(data interface{}) bool {
 		log.Info("error: invalid input params")
 		return false
 	}
-	// Extract the Hostname/IP of the event source and Event from input parameter
 	event := data.(common.Events)
-	host, _, err := net.SplitHostPort(event.IP)
-	if err != nil {
-		host = event.IP
-	}
-	log.Info("After splitting host address, IP is: ", host)
-
 	var requestData = string(event.Request)
 	//replacing the resposne with north bound translation URL
 	for key, value := range config.Data.URLTranslation.NorthBoundURL {
 		requestData = strings.Replace(requestData, key, value, -1)
 	}
+	if event.EventType == "MetricReport" {
+		result := publishMatricReport(event)
+		return result
+	}
+
+	// Extract the Hostname/IP of the event source and Event from input parameter
+	host, _, err := net.SplitHostPort(event.IP)
+	if err != nil {
+		host = event.IP
+	}
+	log.Info("After splitting host address, IP is: ", host)
 
 	var flag bool
 	var uuid string
@@ -192,6 +197,22 @@ func PublishEventsToDestination(data interface{}) bool {
 		go postEvent(key, data)
 	}
 	return flag
+}
+
+func publishMatricReport(event common.Events) bool {
+	subscriptions, err := evmodel.GetEvtSubscriptions("MetricReport")
+	if err != nil {
+		return false
+	}
+	var message telemetry.MetricReports
+	data, err := json.Marshal(message)
+	if err != nil {
+		log.Error("unable to converts event into bytes: ", err.Error())
+	}
+	for _, sub := range subscriptions {
+		go postEvent(sub.Destination, data)
+	}
+	return true
 }
 
 func filterEventsToBeForwarded(subscription evmodel.Subscription, event common.Event, originResources []string) bool {
