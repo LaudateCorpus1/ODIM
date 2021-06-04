@@ -887,6 +887,8 @@ func (p *PluginContact) CreateDefaultEventSubscription(originResources, eventTyp
 }
 
 func validateFields(request *evmodel.RequestBody) (int32, string, []interface{}, error) {
+	validEventFormatTypes := []string{"Event", "MetricReport"}
+	validEventTypes := []string{"Alert", "MetricReport", "ResourceAdded", "ResourceRemoved", "ResourceUpdated", "StatusChange"}
 
 	validate := validator.New()
 
@@ -898,11 +900,34 @@ func validateFields(request *evmodel.RequestBody) (int32, string, []interface{},
 		}
 	}
 	if request.EventFormatType == "" {
-		request.EventFormatType = evmodel.EventFormatType
-	} else if request.EventFormatType == "MetricReport" {
-		return http.StatusBadRequest, errResponse.PropertyMissing, []interface{}{"EventFormatType"}, fmt.Errorf("Unsupported EventFormatType")
-	} else if request.EventFormatType != evmodel.EventFormatType {
 		return http.StatusBadRequest, errResponse.PropertyMissing, []interface{}{"EventFormatType"}, fmt.Errorf("Invalid EventFormatType")
+	}
+	validFormat := false
+	for _, eventFormat := range validEventFormatTypes {
+		if eventFormat == request.EventFormatType {
+			validFormat = true
+		}
+	}
+	if !validFormat {
+		return http.StatusBadRequest, errResponse.PropertyValueNotInList, []interface{}{request.EventFormatType, "EventFormatType"}, fmt.Errorf("Invalid EventFormatType")
+	}
+	if len(request.EventTypes) == 0 {
+		return http.StatusBadRequest, errResponse.PropertyMissing, []interface{}{"EventType"}, fmt.Errorf("Invalid EventType")
+	}
+
+	eventTypesValidated := make(map[string]bool)
+	for _, eventType := range request.EventTypes {
+		eventTypesValidated[eventType] = false
+		for _, definedEvent := range validEventTypes {
+			if eventType == definedEvent {
+				eventTypesValidated[eventType] = true
+			}
+		}
+	}
+	for key, value := range eventTypesValidated {
+		if !value {
+			return http.StatusBadRequest, errResponse.PropertyValueNotInList, []interface{}{key, "EventType"}, fmt.Errorf("Unsupported EventType")
+		}
 	}
 
 	if request.SubscriptionType == "" {
