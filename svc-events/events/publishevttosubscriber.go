@@ -80,7 +80,7 @@ func PublishEventsToDestination(data interface{}) bool {
 		requestData = strings.Replace(requestData, key, value, -1)
 	}
 	if event.EventType == "MetricReport" {
-		result := publishMetricReport(event,requestData)
+		result := publishMetricReport(requestData)
 		return result
 	}
 
@@ -209,7 +209,7 @@ func PublishEventsToDestination(data interface{}) bool {
 	return flag
 }
 
-func publishMetricReport(event common.Events,requestData string) bool {
+func publishMetricReport(requestData string) bool {
 	subscriptions, err := evmodel.GetEvtSubscriptions("MetricReport")
 	if err != nil {
 		return false
