@@ -32,7 +32,6 @@ import (
 	"strings"
 	"time"
 
-	telemetry "github.com/ODIM-Project/ODIM/lib-dmtf/model"
 	"github.com/ODIM-Project/ODIM/lib-rest-client/pmbhandle"
 	"github.com/ODIM-Project/ODIM/lib-utilities/common"
 	"github.com/ODIM-Project/ODIM/lib-utilities/config"
@@ -81,7 +80,7 @@ func PublishEventsToDestination(data interface{}) bool {
 		requestData = strings.Replace(requestData, key, value, -1)
 	}
 	if event.EventType == "MetricReport" {
-		result := publishMetricReport(event)
+		result := publishMetricReport(event,requestData)
 		return result
 	}
 
@@ -210,18 +209,13 @@ func PublishEventsToDestination(data interface{}) bool {
 	return flag
 }
 
-func publishMetricReport(event common.Events) bool {
+func publishMetricReport(event common.Events,requestData string) bool {
 	subscriptions, err := evmodel.GetEvtSubscriptions("MetricReport")
 	if err != nil {
 		return false
 	}
-	var message telemetry.MetricReports
-	data, err := json.Marshal(message)
-	if err != nil {
-		log.Error("unable to converts event into bytes: ", err.Error())
-	}
 	for _, sub := range subscriptions {
-		go postEvent(sub.Destination, data)
+		go postEvent(sub.Destination, []byte(requestData))
 	}
 	return true
 }
