@@ -911,9 +911,6 @@ func validateFields(request *evmodel.RequestBody) (int32, string, []interface{},
 	if !validFormat {
 		return http.StatusBadRequest, errResponse.PropertyValueNotInList, []interface{}{request.EventFormatType, "EventFormatType"}, fmt.Errorf("Invalid EventFormatType")
 	}
-	if len(request.EventTypes) == 0 {
-		return http.StatusBadRequest, errResponse.PropertyMissing, []interface{}{"EventType"}, fmt.Errorf("Invalid EventType")
-	}
 
 	eventTypesValidated := make(map[string]bool)
 	for _, eventType := range request.EventTypes {
