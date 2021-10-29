@@ -18,14 +18,15 @@ package agmodel
 import (
 	"encoding/json"
 	"fmt"
-	log "github.com/sirupsen/logrus"
 	"io/ioutil"
+	"net/http"
 	"strings"
 
 	dmtfmodel "github.com/ODIM-Project/ODIM/lib-dmtf/model"
 	"github.com/ODIM-Project/ODIM/lib-utilities/common"
 	"github.com/ODIM-Project/ODIM/lib-utilities/config"
 	"github.com/ODIM-Project/ODIM/lib-utilities/errors"
+	log "github.com/sirupsen/logrus"
 )
 
 //Schema model is used to iterate throgh the schema json for search/filter
@@ -101,6 +102,47 @@ type OdataID struct {
 	OdataID string `json:"@odata.id"`
 }
 
+//ServerInfo holds the details of the server
+type ServerInfo SaveSystem
+
+// PluginStartUpData holds the required data for plugin startup
+type PluginStartUpData struct {
+	RequestType           string
+	ResyncEvtSubscription bool
+	Devices               map[string]DeviceData
+}
+
+// DeviceData holds device credentials, event subcription and trigger details
+type DeviceData struct {
+	UserName              string
+	Password              []byte
+	Address               string
+	Operation             string
+	EventSubscriptionInfo *EventSubscriptionInfo
+	TriggerInfo           *TriggerInfo
+}
+
+// EventSubscriptionInfo holds the event subscription details of a device
+type EventSubscriptionInfo struct {
+	EventTypes []string
+	Location   string
+}
+
+// TriggerInfo holds the metric trigger info of a device
+type TriggerInfo struct {
+}
+
+//PluginContactRequest holds the details required to contact the plugin
+type PluginContactRequest struct {
+	URL             string
+	HTTPMethodType  string
+	ContactClient   func(string, string, string, string, interface{}, map[string]string) (*http.Response, error)
+	PostBody        interface{}
+	LoginCredential map[string]string
+	Token           string
+	Plugin          Plugin
+}
+
 //GetResource fetches a resource from database using table and key
 func GetResource(Table, key string) (string, *errors.Error) {
 	conn, err := common.GetDBConnection(common.InMemory)
@@ -142,7 +184,7 @@ func GetPluginData(pluginID string) (Plugin, *errors.Error) {
 
 	conn, err := common.GetDBConnection(common.OnDisk)
 	if err != nil {
-		return plugin, err
+		return plugin, errors.PackError(err.ErrNo(), "error while trying to connect to DB: ", err.Error())
 	}
 
 	plugindata, err := conn.Read("Plugin", pluginID)
@@ -286,10 +328,18 @@ func DeleteComputeSystem(index int, key string) *errors.Error {
 				return errors.PackError(err.ErrNo(), "error while trying to delete compute details: ", err.Error())
 			}
 		}
+		if inventoryData, err = connPool.GetAllMatchingDetails("SoftwareInventory", systemID); err != nil {
+			return errors.PackError(err.ErrNo(), "error while trying to get compute details: ", err.Error())
+		}
+		for _, value := range inventoryData {
+			if err = connPool.Delete("SoftwareInventory", value); err != nil {
+				return errors.PackError(err.ErrNo(), "error while trying to delete compute details: ", err.Error())
+			}
+		}
 	}
 
 	//Delete All resources
-	deleteKey := "*" + key[index+1:] + "*"
+	deleteKey := "*" + systemID + "*"
 	if err = connPool.DeleteServer(deleteKey); err != nil {
 		return errors.PackError(err.ErrNo(), "error while trying to delete compute system: ", err.Error())
 	}
@@ -324,6 +374,7 @@ func deletefilteredkeys(key string) error {
 			}
 		}
 	}
+
 	delErr := conn.Del("UUID", key)
 	if delErr != nil {
 		if delErr.Error() != "no data with ID found" {
@@ -732,8 +783,8 @@ func DeleteAggregationSource(aggregtionSourceURI string) *errors.Error {
 	return nil
 }
 
-//GetSystem fetches computer system details by UUID from database
-func GetSystem(systemid string) (string, *errors.Error) {
+//GetComputerSystem fetches computer system details by UUID from database
+func GetComputerSystem(systemid string) (string, *errors.Error) {
 	var system string
 	conn, err := common.GetDBConnection(common.InMemory)
 	if err != nil {
@@ -968,5 +1019,91 @@ func SavePluginManagerInfo(body []byte, table string, key string) error {
 		return errors.PackError(err.ErrNo(), "Unable to save the plugin data with SavePluginManagerInfo:  duplicate UUID: ", err.Error())
 	}
 
+	return nil
+}
+
+// GetDeviceSubscriptions is to get subscription details of device
+func GetDeviceSubscriptions(hostIP string) (*common.DeviceSubscription, error) {
+	conn, err := common.GetDBConnection(common.OnDisk)
+	if err != nil {
+		return nil, err
+	}
+	devSubscription, gerr := conn.GetDeviceSubscription(common.DeviceSubscriptionIndex, hostIP+"*")
+	if gerr != nil {
+		return nil, fmt.Errorf("error while trying to get device subscription details: %v", gerr.Error())
+	}
+	devSub := strings.Split(devSubscription[0], "::")
+	var deviceSubscription = &common.DeviceSubscription{
+		EventHostIP:     devSub[0],
+		Location:        devSub[1],
+		OriginResources: getSliceFromString(devSub[2]),
+	}
+	return deviceSubscription, nil
+}
+
+// getSliceFromString is to convert the string to array
+func getSliceFromString(sliceString string) []string {
+	// redis will store array as string enclosed in "[]"(ex "[alert statuschange]")
+	// to convert to an array remove "[" ,"]" and create a slice
+	sliceString = strings.TrimSuffix(strings.TrimPrefix(sliceString, "["), "]")
+	if len(sliceString) < 1 {
+		return []string{}
+	}
+	return strings.Fields(sliceString)
+}
+
+// GetEventSubscriptions is for getting the event subscription details
+func GetEventSubscriptions(key string) ([]string, error) {
+	conn, err := common.GetDBConnection(common.OnDisk)
+	if err != nil {
+		return nil, err
+	}
+	subscriptions, gerr := conn.GetEvtSubscriptions(common.SubscriptionIndex, "*"+key+"*")
+	if gerr != nil {
+		return nil, fmt.Errorf("error while trying to get event subsciption details: %v", gerr.Error())
+	}
+	return subscriptions, nil
+}
+
+// UpdateDeviceSubscription is to update subscription details of device
+func UpdateDeviceSubscription(devSubscription common.DeviceSubscription) error {
+	conn, err := common.GetDBConnection(common.OnDisk)
+	if err != nil {
+		return err
+	}
+	if err := conn.UpdateDeviceSubscription(common.DeviceSubscriptionIndex, devSubscription.EventHostIP, devSubscription.Location, devSubscription.OriginResources); err != nil {
+		return fmt.Errorf("error while trying to update subscription of device %v", err.Error())
+	}
+	return nil
+}
+
+// CheckMetricRequest will check the DB to see whether there are any active requests for the given key
+// It will return true if there is an active request or false if not
+// It will also through an error if any DB connection issues arise
+func CheckMetricRequest(key string) (bool, *errors.Error) {
+	conn, err := common.GetDBConnection(common.InMemory)
+	if err != nil {
+		return false, errors.PackError(err.ErrNo(), "error: while trying to create connection with DB: ", err.Error())
+	}
+	_, err = conn.Read("ActiveMetricRequest", key)
+	if err != nil {
+		if errors.DBKeyNotFound == err.ErrNo() {
+			return false, nil
+		}
+		return false, errors.PackError(err.ErrNo(), "error: while trying to fetch active connection details: ", err.Error())
+	}
+	return true, nil
+}
+
+// DeleteMetricRequest deletes the active request key from the DB, return error if any
+func DeleteMetricRequest(key string) *errors.Error {
+	conn, err := common.GetDBConnection(common.InMemory)
+	if err != nil {
+		return errors.PackError(err.ErrNo(), "error: while trying to create connection with DB: ", err.Error())
+	}
+	err = conn.Delete("ActiveMetricRequest", key)
+	if err != nil {
+		return errors.PackError(err.ErrNo(), "error: while trying to delete active connection details: ", err.Error())
+	}
 	return nil
 }

@@ -3,9 +3,8 @@ odimra:
   groupID:
   haDeploymentEnabled:
 grfplugin:
-  hostname:
   eventListenerNodePort:
-  imageTag: "1.0"
+  imageTag: "2.0"
   logPath:
   rootServiceUUID:
   username:

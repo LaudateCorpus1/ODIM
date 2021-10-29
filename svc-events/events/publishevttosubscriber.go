@@ -26,11 +26,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	log "github.com/sirupsen/logrus"
 	"net"
 	"net/http"
 	"strings"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/ODIM-Project/ODIM/lib-rest-client/pmbhandle"
 	"github.com/ODIM-Project/ODIM/lib-utilities/common"
@@ -73,8 +74,15 @@ func PublishEventsToDestination(data interface{}) bool {
 		log.Info("error: invalid input params")
 		return false
 	}
-	// Extract the Hostname/IP of the event source and Event from input parameter
+
 	event := data.(common.Events)
+	if event.EventType == "PluginStartUp" {
+		log.Info("received plugin started event from ", event.IP)
+		go callPluginStartUp(event)
+		return true
+	}
+
+	// Extract the Hostname/IP of the event source and Event from input parameter
 	host, _, err := net.SplitHostPort(event.IP)
 	if err != nil {
 		host = event.IP
@@ -87,9 +95,18 @@ func PublishEventsToDestination(data interface{}) bool {
 		requestData = strings.Replace(requestData, key, value, -1)
 	}
 
+	if event.EventType == "MetricReport" {
+		return publishMetricReport(requestData)
+	}
+
 	var flag bool
 	var uuid string
 	var message common.MessageData
+
+	if err = json.Unmarshal([]byte(requestData), &message); err != nil {
+		log.Error("failed to unmarshal the incoming event: ", requestData, " with the error: ", err.Error())
+		return false
+	}
 
 	addFabric(requestData, host)
 	searchKey := evcommon.GetSearchKey(host, evmodel.DeviceSubscriptionIndex)
@@ -192,6 +209,17 @@ func PublishEventsToDestination(data interface{}) bool {
 		go postEvent(key, data)
 	}
 	return flag
+}
+
+func publishMetricReport(requestData string) bool {
+	subscriptions, err := evmodel.GetEvtSubscriptions("MetricReport")
+	if err != nil {
+		return false
+	}
+	for _, sub := range subscriptions {
+		go postEvent(sub.Destination, []byte(requestData))
+	}
+	return true
 }
 
 func filterEventsToBeForwarded(subscription evmodel.Subscription, event common.Event, originResources []string) bool {
@@ -328,8 +356,16 @@ func postEvent(destination string, event []byte) {
 // and rediscover all of them
 func rediscoverSystemInventory(systemID, systemURL string) {
 	systemURL = strings.TrimSuffix(systemURL, "/")
-	aggregator := aggregatorproto.NewAggregatorService(services.Aggregator, services.Service.Client())
-	_, err := aggregator.RediscoverSystemInventory(context.TODO(), &aggregatorproto.RediscoverSystemInventoryRequest{
+
+	conn, err := services.ODIMService.Client(services.Aggregator)
+	if err != nil {
+		log.Error("failed to get client connection object for aggregator service")
+		return
+	}
+	defer conn.Close()
+	aggregator := aggregatorproto.NewAggregatorClient(conn)
+
+	_, err = aggregator.RediscoverSystemInventory(context.TODO(), &aggregatorproto.RediscoverSystemInventoryRequest{
 		SystemID:  systemID,
 		SystemURL: systemURL,
 	})
@@ -345,9 +381,14 @@ func addFabricRPCCall(origin, address string) {
 	if strings.Contains(origin, "Zones") || strings.Contains(origin, "Endpoints") || strings.Contains(origin, "AddressPools") {
 		return
 	}
-	fab := fabricproto.NewFabricsService(services.Fabrics, services.Service.Client())
-
-	_, err := fab.AddFabric(context.TODO(), &fabricproto.AddFabricRequest{
+	conn, err := services.ODIMService.Client(services.Fabrics)
+	if err != nil {
+		log.Error("Error while AddFabric ", err.Error())
+		return
+	}
+	defer conn.Close()
+	fab := fabricproto.NewFabricsClient(conn)
+	_, err = fab.AddFabric(context.TODO(), &fabricproto.AddFabricRequest{
 		OriginResource: origin,
 		Address:        address,
 	})
@@ -382,8 +423,16 @@ func updateSystemPowerState(systemUUID, systemURI, state string) {
 	} else {
 		state = "Off"
 	}
-	aggregator := aggregatorproto.NewAggregatorService(services.Aggregator, services.Service.Client())
-	_, err := aggregator.UpdateSystemState(context.TODO(), &aggregatorproto.UpdateSystemStateRequest{
+
+	conn, err := services.ODIMService.Client(services.Aggregator)
+	if err != nil {
+		log.Error("failed to get client connection object for aggregator service")
+		return
+	}
+	defer conn.Close()
+	aggregator := aggregatorproto.NewAggregatorClient(conn)
+
+	_, err = aggregator.UpdateSystemState(context.TODO(), &aggregatorproto.UpdateSystemStateRequest{
 		SystemUUID: systemUUID,
 		SystemID:   id,
 		SystemURI:  uri,
@@ -395,5 +444,31 @@ func updateSystemPowerState(systemUUID, systemURI, state string) {
 		return
 	}
 	log.Info("info: system power state update initiated")
+	return
+}
+
+func callPluginStartUp(event common.Events) {
+	var message common.PluginStatusEvent
+	if err := json.Unmarshal([]byte(event.Request), &message); err != nil {
+		log.Error("failed to unmarshal the plugin startup event from "+event.IP+
+			" with the error: ", err.Error())
+		return
+	}
+
+	conn, err := services.ODIMService.Client(services.Aggregator)
+	if err != nil {
+		log.Error("failed to get client connection object for aggregator service")
+		return
+	}
+	defer conn.Close()
+	aggregator := aggregatorproto.NewAggregatorClient(conn)
+	if _, err = aggregator.SendStartUpData(context.TODO(), &aggregatorproto.SendStartUpDataRequest{
+		PluginAddr: event.IP,
+		OriginURI:  message.OriginatorID,
+	}); err != nil {
+		log.Error("failed to send plugin startup data to " + event.IP + ": " + err.Error())
+		return
+	}
+	log.Info("successfully sent plugin startup data to " + event.IP)
 	return
 }

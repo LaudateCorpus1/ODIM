@@ -243,7 +243,7 @@ func (p *PluginContact) DeleteEventSubscriptionsDetails(req *eventsproto.EventRe
 	}
 
 	commonResponse := response.Response{
-		OdataType: "#EventDestination.v1_7_0.EventDestination",
+		OdataType: common.EventDestinationType,
 		OdataID:   "/redfish/v1/EventService/Subscriptions/" + req.EventSubscriptionID,
 		ID:        req.EventSubscriptionID,
 		Name:      "Event Subscription",
@@ -461,6 +461,7 @@ func (p *PluginContact) DeleteFabricsSubscription(originResource string, plugin 
 	searchKey := evcommon.GetSearchKey(addr, evmodel.DeviceSubscriptionIndex)
 	devSub, err := evmodel.GetDeviceSubscriptions(searchKey)
 	if err != nil {
+
 		errorMessage := "Error while get device subscription details: " + err.Error()
 		if strings.Contains(err.Error(), "No data found for the key") {
 			// retry the GetDeviceSubscription with plugin IP
@@ -537,6 +538,7 @@ func (p *PluginContact) resubscribeFabricsSubscription(subscriptionPost evmodel.
 			log.Error(errorMessage)
 			return fmt.Errorf(errorMessage)
 		}
+		// Deleting the fabric subscription
 		resp, err := p.DeleteFabricsSubscription(origin, plugin)
 		if err != nil {
 			if resp.StatusCode == http.StatusNotFound {
