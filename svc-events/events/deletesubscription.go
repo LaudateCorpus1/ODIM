@@ -467,7 +467,6 @@ func (p *PluginContact) DeleteFabricsSubscription(originResource string, plugin 
 			// retry the GetDeviceSubscription with plugin IP
 			devSub, err = evmodel.GetDeviceSubscriptions(plugin.IP)
 			if err != nil {
-
 				var msgArgs = []interface{}{plugin.ID + " Plugin", addr}
 				evcommon.GenErrorResponse(errorMessage, response.ResourceNotFound, http.StatusNotFound, msgArgs, &resp)
 				log.Error(errorMessage)

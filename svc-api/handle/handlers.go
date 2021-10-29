@@ -291,7 +291,6 @@ func GetMetadata(ctx iris.Context) {
 					models.Include{Namespace: "AttributeRegistry.v1_0_2"},
 					models.Include{Namespace: "AttributeRegistry.v1_0_3"},
 					models.Include{Namespace: "AttributeRegistry.v1_0_4"},
-					models.Include{Namespace: "AttributeRegistry.v1_0_5"},
 					models.Include{Namespace: "AttributeRegistry.v1_0_6"},
 					models.Include{Namespace: "AttributeRegistry.v1_0_7"},
 					models.Include{Namespace: "AttributeRegistry.v1_0_8"},
@@ -327,9 +326,6 @@ func GetMetadata(ctx iris.Context) {
 					models.Include{Namespace: "AttributeRegistry.v1_3_6"},
 				},
 			},
-			models.Reference{URI: "http://redfish.dmtf.org/schemas/v1/Bios_v1.xml",
-				TopInclude: []models.Include{
-					models.Include{Namespace: "Bios"},
 					models.Include{Namespace: "Bios.v1_0_0"},
 					models.Include{Namespace: "Bios.v1_0_0"},
 					models.Include{Namespace: "Bios.v1_0_1"},
@@ -2126,7 +2122,7 @@ func GetMetadata(ctx iris.Context) {
 					models.Include{Namespace: "SessionService.v1_1_8"},
 				},
 			},
-			models.Reference{URI: "http://redfish.dmtf.org/schemas/v1/Settings_v1.xml",
+			models.Reference{URI: "http://redfish.dmtf.org/schemas/v1/SessionCollection_v1.xml",
 				TopInclude: []models.Include{
 					models.Include{Namespace: "Settings"},
 					models.Include{Namespace: "Settings.v1_0_0"},
